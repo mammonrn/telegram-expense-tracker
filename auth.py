@@ -16,6 +16,8 @@ consent URL and paste back a code.
 from __future__ import annotations
 
 import logging
+import secrets
+import string
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -31,6 +33,26 @@ DRIVE_OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive"]
 # nothing needs to actually be listening on it for the manual copy/paste
 # flow used here - see authorize_drive.py.
 REDIRECT_URI = "http://localhost"
+
+# RFC 7636 PKCE code_verifier: 43-128 chars from [A-Za-z0-9-._~].
+_CODE_VERIFIER_CHARS = string.ascii_letters + string.digits + "-._~"
+_CODE_VERIFIER_LENGTH = 128
+
+
+def _generate_code_verifier() -> str:
+    """Generate our own PKCE code_verifier instead of relying on
+    google-auth-oauthlib's `autogenerate_code_verifier` default.
+
+    That default has been version-dependent in the wild (see
+    googleapis/google-auth-library-python-oauthlib#354): when it silently
+    evaluates falsy, `Flow.code_verifier` stays None, so the authorization
+    request is sent with no `code_challenge` at all, yet `Flow.fetch_token`
+    unconditionally sends `code_verifier=None` in the token exchange -
+    Google rejects that with `invalid_grant: Invalid code verifier` on
+    every single attempt, including a brand new one. Generating and owning
+    the verifier ourselves removes that ambiguity entirely.
+    """
+    return "".join(secrets.choice(_CODE_VERIFIER_CHARS) for _ in range(_CODE_VERIFIER_LENGTH))
 
 
 class DriveAuthError(RuntimeError):
@@ -77,9 +99,18 @@ def build_authorization_url(client_secret_path: str) -> tuple[InstalledAppFlow, 
     """Start the manual OAuth flow.
 
     Returns the in-progress `flow` object (needed to complete the exchange)
-    and a URL for the user to open in any browser, on any device.
+    and a URL for the user to open in any browser, on any device. The same
+    `flow` instance must be passed to `exchange_code` afterwards - it holds
+    the PKCE code_verifier that has to match the code_challenge baked into
+    this URL.
     """
-    flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, DRIVE_OAUTH_SCOPES)
+    code_verifier = _generate_code_verifier()
+    flow = InstalledAppFlow.from_client_secrets_file(
+        client_secret_path,
+        DRIVE_OAUTH_SCOPES,
+        code_verifier=code_verifier,
+        autogenerate_code_verifier=False,
+    )
     flow.redirect_uri = REDIRECT_URI
     auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
     return flow, auth_url
@@ -89,6 +120,14 @@ def exchange_code(flow: InstalledAppFlow, pasted: str) -> Credentials:
     """Finish the manual flow: exchange a pasted code (or full redirect URL)
     for credentials. Accepts either just the `code=...` value or the whole
     (unreachable) redirect URL the browser lands on, for convenience."""
+    if not flow.code_verifier:
+        # Defensive guard: fail loudly rather than silently sending a
+        # missing/garbage code_verifier that Google would reject anyway -
+        # see _generate_code_verifier's docstring for why this matters.
+        raise DriveAuthError(
+            "Internal error: this OAuth flow has no PKCE code_verifier. "
+            "Please restart authorize_drive.py and try again."
+        )
     code = _extract_code(pasted)
     flow.fetch_token(code=code)
     return flow.credentials
