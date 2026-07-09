@@ -217,8 +217,10 @@ class SlipConversation:
         return ""
 
     async def _run_ocr(self, file_bytes: bytes, is_pdf: bool) -> OCRResult:
-        text, engine_confidence, engine_name = self._ocr.extract_text(file_bytes, is_pdf=is_pdf)
-        result = parse_slip_text(text, base_confidence=engine_confidence)
+        text, engine_confidence, engine_name, amount_hint = self._ocr.extract_text(
+            file_bytes, is_pdf=is_pdf
+        )
+        result = parse_slip_text(text, base_confidence=engine_confidence, amount_hint=amount_hint)
         result.engine = engine_name
         return result
 

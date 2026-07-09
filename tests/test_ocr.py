@@ -100,3 +100,29 @@ def test_parse_slip_zero_amount_never_reports_amount_found():
 
     assert result.amount is None
     assert "amount" not in result.field_confidence or not result.field_confidence["amount"]
+
+
+# -- amount_hint: a confident value from Tesseract's targeted crop pass
+# (OCREngine._extract_amount_hint) takes priority over full-text heuristics. --
+
+
+def test_parse_slip_amount_hint_takes_priority_over_labeled_text():
+    text = "Bangkok Bank\nAmount 999.00 THB\nDate 09/07/2026"
+    result = parse_slip_text(text, amount_hint=Decimal("1250.00"))
+
+    assert result.amount == Decimal("1250.00")
+    assert result.field_confidence.get("amount") is True
+
+
+def test_parse_slip_invalid_amount_hint_falls_back_to_text():
+    text = "Bangkok Bank\nAmount 999.00 THB\nDate 09/07/2026"
+    result = parse_slip_text(text, amount_hint=Decimal("0"))
+
+    assert result.amount == Decimal("999.00")
+
+
+def test_parse_slip_no_amount_hint_uses_existing_behavior():
+    text = "Bangkok Bank\nAmount 999.00 THB\nDate 09/07/2026"
+    result = parse_slip_text(text, amount_hint=None)
+
+    assert result.amount == Decimal("999.00")
