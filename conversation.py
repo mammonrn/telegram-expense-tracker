@@ -45,7 +45,7 @@ from config import CATEGORIES, Config, category_display
 from database import ExpenseDatabase, ExpenseRecord
 from drive import DriveManager
 from ocr import OCREngine, OCRResult, parse_slip_text
-from utils import MONTH_NAMES, compress_image, parse_amount
+from utils import MONTH_NAMES, compress_image, is_amount_valid, parse_amount
 
 logger = logging.getLogger("expense_bot.conversation")
 
@@ -177,7 +177,7 @@ class SlipConversation:
         )
         context.user_data[PENDING_KEY] = pending
 
-        if pending.amount is None or ocr_result.confidence < self._config.ocr_confidence_threshold:
+        if not is_amount_valid(pending.amount) or ocr_result.confidence < self._config.ocr_confidence_threshold:
             await processing_msg.edit_text(
                 "🤔 อ่านจำนวนเงินไม่ชัดเจนครับ\nกรุณาพิมพ์จำนวนเงินที่ถูกต้อง"
             )
@@ -247,8 +247,10 @@ class SlipConversation:
             return ConversationHandler.END
 
         amount = parse_amount(message.text or "")
-        if amount is None:
-            await message.reply_text("จำนวนเงินไม่ถูกต้องครับ กรุณาลองใหม่ เช่น 1250.00")
+        if not is_amount_valid(amount):
+            await message.reply_text(
+                "จำนวนเงินไม่ถูกต้องครับ กรุณาลองใหม่ เช่น 1250.00 (ต้องมากกว่า 0)"
+            )
             return WAITING_AMOUNT_CORRECTION
 
         pending.amount = amount
@@ -429,7 +431,7 @@ class SlipConversation:
 
         if context.args:
             amount = parse_amount(context.args[0])
-            if amount is not None:
+            if is_amount_valid(amount):
                 remark = " ".join(context.args[1:]).strip()
                 return await self._start_cash_pending(update, context, amount, remark)
             await message.reply_text(
@@ -447,7 +449,7 @@ class SlipConversation:
             return ConversationHandler.END
 
         amount = parse_amount(message.text or "")
-        if amount is None:
+        if not is_amount_valid(amount):
             return ConversationHandler.END
         return await self._start_cash_pending(update, context, amount, remark="")
 
@@ -455,8 +457,8 @@ class SlipConversation:
         """Amount reply after a bare `/cash` prompt."""
         message = update.effective_message
         amount = parse_amount(message.text or "")
-        if amount is None:
-            await message.reply_text("จำนวนเงินไม่ถูกต้อง กรุณาลองใหม่ เช่น 150 หรือ 150.50")
+        if not is_amount_valid(amount):
+            await message.reply_text("จำนวนเงินไม่ถูกต้อง กรุณาลองใหม่ เช่น 150 หรือ 150.50 (ต้องมากกว่า 0)")
             return CASH_WAITING_AMOUNT
         return await self._start_cash_pending(update, context, amount, remark="")
 

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from PIL import Image
 
-from utils import compress_image, parse_amount, safe_filename, thai_year_to_gregorian
+from utils import compress_image, is_amount_valid, parse_amount, safe_filename, thai_year_to_gregorian
 
 
 def test_parse_amount_plain():
@@ -24,6 +24,23 @@ def test_parse_amount_invalid_returns_none():
 
 def test_parse_amount_empty_returns_none():
     assert parse_amount("") is None
+
+
+def test_is_amount_valid_accepts_positive_amount():
+    assert is_amount_valid(Decimal("150.00")) is True
+
+
+def test_is_amount_valid_rejects_none():
+    assert is_amount_valid(None) is False
+
+
+def test_is_amount_valid_rejects_zero():
+    assert is_amount_valid(Decimal("0")) is False
+    assert is_amount_valid(Decimal("0.00")) is False
+
+
+def test_is_amount_valid_rejects_negative():
+    assert is_amount_valid(Decimal("-5.00")) is False
 
 
 def test_thai_year_to_gregorian_converts_buddhist_era():

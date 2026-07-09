@@ -46,6 +46,7 @@ utils.py           # logging, retry decorator, image/date/amount helpers
 auth.py            # Drive OAuth2 token loading/refreshing (see authorize_drive.py)
 authorize_drive.py # one-time interactive Drive authorization script (run manually)
 migrate_thai_categories.py  # one-time fix for rows saved with a Thai Category value
+audit_sheet_issues.py       # read-only report of rows with Thai Category or Amount=0
 ocr.py             # Vision/Tesseract OCR + Thai/English slip parsing
 drive.py           # Drive folder management, caching, uploads, backups (OAuth2)
 sheet.py           # Google Sheets Expenses + Summary worksheet management (service account)
@@ -256,7 +257,7 @@ User types "สรุปค่าใช้จ่าย" / "ค่าใช้จ
 
 ## Categories
 
-🍜 Food, 🏨 Accommodation, 🚗 Transportation, 🎮 Entertainment,
+🍜 Food, 🏨 Accommodation, 🚗 Transportation, 🎮 Entertainment, 🍺 Alcohol,
 📚 Education, 🙏 Donation, 🛍 Shopping, 💡 Bills, 🏥 Healthcare,
 📈 Investment, 👨‍👩‍👧 Family, 💼 Business, 📦 Other.
 
@@ -269,8 +270,8 @@ what happens when this rule is broken).
 
 For display, each category has a Thai translation in
 `config.py`'s `CATEGORY_LABELS_TH` (🍜 อาหาร, 🏨 ที่พัก, 🚗 การเดินทาง,
-🎮 ความบันเทิง, 📚 การศึกษา, 🙏 บริจาค, 🛍 ช้อปปิ้ง, 💡 ค่าบิล, 🏥 สุขภาพ,
-📈 การลงทุน, 👨‍👩‍👧 ครอบครัว, 💼 ธุรกิจ, 📦 อื่นๆ) rendered via
+🎮 ความบันเทิง, 🍺 เหล้า, 📚 การศึกษา, 🙏 บริจาค, 🛍 ช้อปปิ้ง, 💡 ค่าบิล,
+🏥 สุขภาพ, 📈 การลงทุน, 👨‍👩‍👧 ครอบครัว, 💼 ธุรกิจ, 📦 อื่นๆ) rendered via
 `category_display()` at the point a message is sent - never stored.
 
 ## User-facing language
@@ -316,6 +317,21 @@ label, and rewrites it to the matching English canonical value (e.g.
 "อาหาร" -> "Food"). Rows already in English, or containing an
 unrecognized/custom category, are left untouched. Safe to run more than
 once - a second run will report nothing left to migrate.
+
+A related bug also let OCR failures silently save `Amount = 0` instead of
+prompting for manual re-entry (fixed - see `is_amount_valid()` in
+`utils.py`). There's no way to recover the real amount for an affected
+row automatically, so it's not part of the auto-migration. To find any
+existing rows with either problem without changing anything:
+
+```bash
+python audit_sheet_issues.py
+```
+
+This is read-only - it prints the affected row numbers so you can fix
+them yourself, e.g. through `/edit` in the bot. For an Amount = 0 row,
+that row's Drive URL / Telegram File ID column points at the original
+slip image, so you can look up the real amount there.
 
 ## Notes on the Sheet schema
 

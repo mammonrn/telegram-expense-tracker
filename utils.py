@@ -214,6 +214,18 @@ def parse_amount(text: str) -> Decimal | None:
         return None
 
 
+def is_amount_valid(amount: Decimal | None) -> bool:
+    """True only for a real, usable expense amount.
+
+    A missing amount and a zero/negative amount are both treated as
+    invalid: no real bank transfer or cash expense is for ฿0.00, so a
+    parsed zero means the source (OCR or user input) failed, not that
+    the expense is genuinely free. Callers must never silently save an
+    amount that fails this check - always route back to manual entry.
+    """
+    return amount is not None and amount > 0
+
+
 def thai_year_to_gregorian(year: int) -> int:
     """Convert a Buddhist-era year (e.g. 2569) to Gregorian (2026).
 

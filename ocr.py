@@ -127,9 +127,18 @@ def parse_slip_text(text: str, base_confidence: float = 0.0) -> OCRResult:
             break
 
     # --- Amount --- (prefer a labelled "Amount: 1,234.00" over bare numbers)
+    #
+    # A parsed amount of zero (or less) is treated the same as "nothing
+    # found" - never a confidently-extracted value. A real transfer slip
+    # is never for ฿0.00; a zero here means OCR misread the digits (or
+    # matched a stray "0" near the amount label), not a valid amount. If
+    # this were accepted as `found["amount"] = True`, it would inflate
+    # the confidence score enough to skip the manual re-entry prompt and
+    # silently save Amount=0 to the sheet.
     amount_match = _AMOUNT_LABEL_PATTERN.search(text)
-    if amount_match:
-        result.amount = parse_amount(amount_match.group(1))
+    labeled_amount = parse_amount(amount_match.group(1)) if amount_match else None
+    if labeled_amount is not None and labeled_amount > 0:
+        result.amount = labeled_amount
         found["amount"] = True
     else:
         candidates = _STANDALONE_AMOUNT_PATTERN.findall(text)
@@ -138,7 +147,7 @@ def parse_slip_text(text: str, base_confidence: float = 0.0) -> OCRResult:
             # figure on the slip (fees/reference numbers are smaller or
             # integer-only).
             parsed = [parse_amount(c) for c in candidates]
-            parsed = [p for p in parsed if p is not None]
+            parsed = [p for p in parsed if p is not None and p > 0]
             if parsed:
                 result.amount = max(parsed)
                 found["amount"] = False  # unlabeled guess - lower confidence
