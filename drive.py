@@ -7,6 +7,12 @@ Folder layout maintained under the configured parent folder:
 Folder IDs are cached in-memory and persisted to a local JSON file so
 repeated uploads within the same month don't re-query Drive for folders
 that are known to already exist (requirement: reduce API calls).
+
+Uses OAuth2 user credentials (see auth.py), not the service account used
+for Sheets: a service account has no Drive storage quota of its own
+outside a Shared Drive, and Shared Drives require paid Google Workspace.
+Files uploaded here are owned by whichever personal Google account was
+authorized via `authorize_drive.py`.
 """
 
 from __future__ import annotations
@@ -16,17 +22,16 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
 
+from auth import load_drive_credentials
 from config import DRIVE_ROOT_FOLDER_NAME
 from utils import sync_retry, safe_filename
 
 logger = logging.getLogger("expense_bot.drive")
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
@@ -35,13 +40,11 @@ class DriveManager:
 
     def __init__(
         self,
-        credentials_path: str,
+        token_path: str,
         parent_folder_id: str,
         cache_path: str = ".drive_folder_cache.json",
     ) -> None:
-        creds = service_account.Credentials.from_service_account_file(
-            credentials_path, scopes=SCOPES
-        )
+        creds = load_drive_credentials(token_path)
         self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
         self._parent_folder_id = parent_folder_id
         self._cache_path = Path(cache_path)

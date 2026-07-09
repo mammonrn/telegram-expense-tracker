@@ -127,7 +127,7 @@ class ExpenseDatabase:
     def _aggregate_by_category(records: list[dict[str, str]]) -> dict[str, Decimal]:
         totals: dict[str, Decimal] = {}
         for r in records:
-            category = r.get("Category", "Other") or "Other"
+            category = r.get("Category", "อื่นๆ") or "อื่นๆ"
             try:
                 amount = Decimal(str(r.get("Amount", "0")) or "0")
             except Exception:  # noqa: BLE001

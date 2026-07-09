@@ -49,7 +49,7 @@ class CommandHandlers:
     async def _guard(self, update: Update) -> bool:
         user = update.effective_user
         if user is None or not self._authorized(user.id):
-            await update.effective_message.reply_text("You're not authorized to use this bot.")
+            await update.effective_message.reply_text("คุณไม่มีสิทธิ์ใช้งานบอทนี้ครับ")
             return False
         return True
 
@@ -59,39 +59,39 @@ class CommandHandlers:
         if not await self._guard(update):
             return
         await update.effective_message.reply_text(
-            "👋 Send me a photo or PDF of a bank transfer slip and I'll record it as an expense.\n\n"
-            "Paid with cash instead? Just type the amount (e.g. \"150\") or use /cash.\n"
-            "Want to know how much you've spent this month? Just ask, e.g. \"สรุปค่าใช้จ่าย\".\n\n"
-            "Type /help to see everything I can do."
+            "👋 ส่งรูปสลิปโอนเงิน (หรือไฟล์ PDF) มาให้ผมได้เลย แล้วผมจะบันทึกเป็นรายจ่ายให้อัตโนมัติ\n\n"
+            "จ่ายเป็นเงินสดไม่มีสลิป? แค่พิมพ์จำนวนเงิน (เช่น \"150\") หรือใช้คำสั่ง /cash ก็ได้ครับ\n"
+            "อยากรู้ว่าเดือนนี้ใช้จ่ายไปเท่าไหร่? ถามได้เลย เช่น \"สรุปค่าใช้จ่าย\"\n\n"
+            "พิมพ์ /help เพื่อดูคำสั่งทั้งหมดที่ผมทำได้"
         )
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard(update):
             return
         text = (
-            "*Expense Tracker Bot*\n\n"
-            "📷 Send a slip photo/PDF to record an expense.\n"
-            "💵 No slip? Type a bare amount (e.g. \"150\") or use /cash `<amount>` `[remark]` "
-            "to log a cash expense directly.\n"
-            "🗣 Ask directly, e.g. \"สรุปค่าใช้จ่าย\" / \"ค่าใช้จ่ายเดือนนี้เท่าไหร่\", "
-            "and I'll reply with this month's totals and category breakdown.\n\n"
-            "*Commands*\n"
-            "/cash `[amount]` `[remark]` - log a cash expense (no slip)\n"
-            "/stats\\_month - this month's totals by category, with %\n"
-            "/stats\\_year - this year's totals by category, with %\n"
-            "/export\\_csv - export your records as CSV\n"
-            "/export\\_excel - export your records as Excel\n"
-            "/search\\_category `<category>` - list expenses in a category\n"
-            "/search\\_date `<YYYY-MM-DD> <YYYY-MM-DD>` - list expenses in a date range\n"
-            "/edit - edit a saved record by reference number\n"
-            "/delete - delete a saved record by reference number\n"
-            "/cancel - cancel the current action\n"
+            "*บอทบันทึกรายจ่าย*\n\n"
+            "📷 ส่งรูปสลิปหรือไฟล์ PDF เพื่อบันทึกรายจ่าย\n"
+            "💵 ไม่มีสลิป? พิมพ์จำนวนเงินตรงๆ (เช่น \"150\") หรือใช้คำสั่ง /cash `<จำนวนเงิน>` `[หมายเหตุ]` "
+            "เพื่อบันทึกรายจ่ายเงินสดได้ทันที\n"
+            "🗣 ถามได้เลย เช่น \"สรุปค่าใช้จ่าย\" / \"ค่าใช้จ่ายเดือนนี้เท่าไหร่\" "
+            "แล้วผมจะสรุปยอดรวมเดือนนี้พร้อมแยกตามหมวดหมู่ให้\n\n"
+            "*คำสั่ง*\n"
+            "/cash `[จำนวนเงิน]` `[หมายเหตุ]` - บันทึกรายจ่ายเงินสด (ไม่มีสลิป)\n"
+            "/stats\\_month - ยอดรวมเดือนนี้แยกตามหมวดหมู่ พร้อมเปอร์เซ็นต์\n"
+            "/stats\\_year - ยอดรวมปีนี้แยกตามหมวดหมู่ พร้อมเปอร์เซ็นต์\n"
+            "/export\\_csv - ส่งออกข้อมูลเป็นไฟล์ CSV\n"
+            "/export\\_excel - ส่งออกข้อมูลเป็นไฟล์ Excel\n"
+            "/search\\_category `<หมวดหมู่>` - ค้นหารายจ่ายตามหมวดหมู่\n"
+            "/search\\_date `<YYYY-MM-DD> <YYYY-MM-DD>` - ค้นหารายจ่ายตามช่วงวันที่\n"
+            "/edit - แก้ไขรายการที่บันทึกไว้ (ค้นหาด้วยเลขที่อ้างอิง)\n"
+            "/delete - ลบรายการที่บันทึกไว้ (ค้นหาด้วยเลขที่อ้างอิง)\n"
+            "/cancel - ยกเลิกการทำงานปัจจุบัน\n"
         )
         await update.effective_message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data.clear()
-        await update.effective_message.reply_text("Cancelled.")
+        await update.effective_message.reply_text("ยกเลิกแล้วครับ")
         return ConversationHandler.END
 
     # -- stats --------------------------------------------------------------
@@ -117,7 +117,7 @@ class CommandHandlers:
             return
         data = self._db.export_csv(update.effective_user.id)
         await update.effective_message.reply_document(
-            document=io.BytesIO(data), filename="expenses.csv", caption="📄 Your expense export (CSV)"
+            document=io.BytesIO(data), filename="expenses.csv", caption="📄 ไฟล์ส่งออกรายจ่ายของคุณ (CSV)"
         )
 
     async def export_excel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,7 +125,7 @@ class CommandHandlers:
             return
         data = self._db.export_excel(update.effective_user.id)
         await update.effective_message.reply_document(
-            document=io.BytesIO(data), filename="expenses.xlsx", caption="📊 Your expense export (Excel)"
+            document=io.BytesIO(data), filename="expenses.xlsx", caption="📊 ไฟล์ส่งออกรายจ่ายของคุณ (Excel)"
         )
 
     # -- search --------------------------------------------------------------
@@ -136,30 +136,30 @@ class CommandHandlers:
         if not context.args:
             valid = ", ".join(label for _, label in CATEGORIES.values())
             await update.effective_message.reply_text(
-                f"Usage: /search_category <category>\nValid categories: {valid}"
+                f"วิธีใช้: /search_category <หมวดหมู่>\nหมวดหมู่ที่ใช้ได้: {valid}"
             )
             return
         category = " ".join(context.args)
         results = self._db.search_by_category(category, update.effective_user.id)
-        await update.effective_message.reply_text(_format_records(results, f"Category: {category}"))
+        await update.effective_message.reply_text(_format_records(results, f"หมวดหมู่: {category}"))
 
     async def search_date(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard(update):
             return
         if len(context.args) != 2:
             await update.effective_message.reply_text(
-                "Usage: /search_date <YYYY-MM-DD> <YYYY-MM-DD>"
+                "วิธีใช้: /search_date <YYYY-MM-DD> <YYYY-MM-DD>"
             )
             return
         try:
             start = datetime.strptime(context.args[0], "%Y-%m-%d").date()
             end = datetime.strptime(context.args[1], "%Y-%m-%d").date()
         except ValueError:
-            await update.effective_message.reply_text("Dates must be in YYYY-MM-DD format.")
+            await update.effective_message.reply_text("รูปแบบวันที่ต้องเป็น YYYY-MM-DD")
             return
         results = self._db.search_by_date(start, end, update.effective_user.id)
         await update.effective_message.reply_text(
-            _format_records(results, f"{start.isoformat()} to {end.isoformat()}")
+            _format_records(results, f"{start.isoformat()} ถึง {end.isoformat()}")
         )
 
     # -- edit (conversation) -----------------------------------------------
@@ -168,7 +168,7 @@ class CommandHandlers:
         if not await self._guard(update):
             return ConversationHandler.END
         await update.effective_message.reply_text(
-            "Please send the Reference Number of the record you want to edit."
+            "กรุณาส่งเลขที่อ้างอิงของรายการที่ต้องการแก้ไข"
         )
         return EDIT_WAIT_REF
 
@@ -176,11 +176,11 @@ class CommandHandlers:
         ref = (update.effective_message.text or "").strip()
         row = self._find_row_by_reference(ref, update.effective_user.id)
         if row is None:
-            await update.effective_message.reply_text("No record found with that reference number.")
+            await update.effective_message.reply_text("ไม่พบรายการที่มีเลขที่อ้างอิงนี้ครับ")
             return ConversationHandler.END
         context.user_data["edit_row"] = row
         await update.effective_message.reply_text(
-            "Which field would you like to edit?\n" + ", ".join(EDITABLE_FIELDS)
+            "ต้องการแก้ไขข้อมูลส่วนไหนครับ?\n" + ", ".join(EDITABLE_FIELDS)
         )
         return EDIT_WAIT_FIELD
 
@@ -189,11 +189,11 @@ class CommandHandlers:
         matches = [f for f in EDITABLE_FIELDS if f.lower() == field_name.lower()]
         if not matches:
             await update.effective_message.reply_text(
-                "Not an editable field. Choose one of: " + ", ".join(EDITABLE_FIELDS)
+                "ไม่ใช่ฟิลด์ที่แก้ไขได้ครับ กรุณาเลือกจาก: " + ", ".join(EDITABLE_FIELDS)
             )
             return EDIT_WAIT_FIELD
         context.user_data["edit_field"] = matches[0]
-        await update.effective_message.reply_text(f"New value for {matches[0]}?")
+        await update.effective_message.reply_text(f"กรุณาใส่ค่าใหม่สำหรับ {matches[0]}:")
         return EDIT_WAIT_VALUE
 
     async def edit_receive_value(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -204,10 +204,10 @@ class CommandHandlers:
             try:
                 Decimal(value)
             except Exception:  # noqa: BLE001
-                await update.effective_message.reply_text("Amount must be numeric, try again.")
+                await update.effective_message.reply_text("จำนวนเงินต้องเป็นตัวเลขครับ กรุณาลองใหม่")
                 return EDIT_WAIT_VALUE
         self._db.edit_field(row, {field_name: value})
-        await update.effective_message.reply_text(f"✅ Updated {field_name}.")
+        await update.effective_message.reply_text(f"✅ อัปเดต {field_name} เรียบร้อยแล้ว")
         context.user_data.pop("edit_row", None)
         context.user_data.pop("edit_field", None)
         return ConversationHandler.END
@@ -218,7 +218,7 @@ class CommandHandlers:
         if not await self._guard(update):
             return ConversationHandler.END
         await update.effective_message.reply_text(
-            "Please send the Reference Number of the record you want to delete."
+            "กรุณาส่งเลขที่อ้างอิงของรายการที่ต้องการลบ"
         )
         return DELETE_WAIT_REF
 
@@ -226,22 +226,22 @@ class CommandHandlers:
         ref = (update.effective_message.text or "").strip()
         row = self._find_row_by_reference(ref, update.effective_user.id)
         if row is None:
-            await update.effective_message.reply_text("No record found with that reference number.")
+            await update.effective_message.reply_text("ไม่พบรายการที่มีเลขที่อ้างอิงนี้ครับ")
             return ConversationHandler.END
         context.user_data["delete_row"] = row
         await update.effective_message.reply_text(
-            f"Delete record at row {row}? Reply 'yes' to confirm or 'no' to cancel."
+            "ต้องการลบรายการนี้ใช่ไหมครับ? พิมพ์ 'ใช่' เพื่อยืนยัน หรือ 'ไม่' เพื่อยกเลิก"
         )
         return DELETE_WAIT_CONFIRM
 
     async def delete_confirm(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         answer = (update.effective_message.text or "").strip().lower()
         row = context.user_data.pop("delete_row", None)
-        if answer not in ("yes", "y") or row is None:
-            await update.effective_message.reply_text("Not deleted.")
+        if answer not in ("yes", "y", "ใช่") or row is None:
+            await update.effective_message.reply_text("ไม่ได้ลบรายการครับ")
             return ConversationHandler.END
         self._db.delete(row)
-        await update.effective_message.reply_text("🗑 Record deleted.")
+        await update.effective_message.reply_text("🗑 ลบรายการเรียบร้อยแล้ว")
         return ConversationHandler.END
 
     def _find_row_by_reference(self, reference_number: str, user_id: int) -> int | None:
@@ -268,13 +268,13 @@ def _format_totals(period_label: str, totals: dict[str, Decimal]) -> str:
 
 def _format_records(records: list[dict[str, str]], label: str, limit: int = 20) -> str:
     if not records:
-        return f"No expenses found for {label}."
-    lines = [f"🔍 {len(records)} result(s) for {label}:"]
+        return f"ไม่พบรายการค่าใช้จ่ายสำหรับ {label}"
+    lines = [f"🔍 พบ {len(records)} รายการสำหรับ {label}:"]
     for r in records[:limit]:
         lines.append(
             f"  {r.get('Date')} {r.get('Time')} - {r.get('Amount')} "
-            f"({r.get('Category')}) ref:{r.get('Reference Number') or '-'}"
+            f"({r.get('Category')}) เลขอ้างอิง:{r.get('Reference Number') or '-'}"
         )
     if len(records) > limit:
-        lines.append(f"  ...and {len(records) - limit} more")
+        lines.append(f"  ...และอีก {len(records) - limit} รายการ")
     return "\n".join(lines)

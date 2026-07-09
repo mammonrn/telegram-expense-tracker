@@ -43,9 +43,11 @@ Send a photo (or PDF) of a bank transfer slip to a Telegram bot and have it:
 main.py            # entry point, dependency wiring, job scheduling
 config.py          # env-based configuration, categories, sheet schema
 utils.py           # logging, retry decorator, image/date/amount helpers
+auth.py            # Drive OAuth2 token loading/refreshing (see authorize_drive.py)
+authorize_drive.py # one-time interactive Drive authorization script (run manually)
 ocr.py             # Vision/Tesseract OCR + Thai/English slip parsing
-drive.py           # Drive folder management, caching, uploads, backups
-sheet.py           # Google Sheets Expenses + Summary worksheet management
+drive.py           # Drive folder management, caching, uploads, backups (OAuth2)
+sheet.py           # Google Sheets Expenses + Summary worksheet management (service account)
 database.py        # domain layer: records, dedup, search, stats, export
 conversation.py    # Telegram ConversationHandler: slip -> category -> save
 handlers/
@@ -57,27 +59,55 @@ requirements.txt
 .env.example
 ```
 
+## Two kinds of Google credentials
+
+This bot talks to two Google APIs with two different credential types,
+because a service account cannot own files or use storage quota outside a
+paid Shared Drive:
+
+| API | Credential | Why |
+|---|---|---|
+| Google Sheets | Service account (`GOOGLE_APPLICATION_CREDENTIALS`) | Sheets are shared *to* the service account — no personal quota needed. |
+| Google Drive | OAuth2 user account (`client_secret.json` + `token.json`) | Uploaded files need to be owned by a real Google account with Drive storage. |
+
 ## 1. Google Cloud setup
 
 1. Create (or reuse) a Google Cloud project at https://console.cloud.google.com.
 2. Enable APIs: **Google Drive API**, **Google Sheets API**, and (optionally,
    for better OCR) **Cloud Vision API**.
+
+### 1a. Service account (for Google Sheets)
+
 3. Create a **Service Account**: IAM & Admin → Service Accounts → Create
    Service Account. No project roles are required — access is granted by
-   sharing the Drive folder/Sheet directly with the service account.
+   sharing the Sheet directly with the service account.
 4. Create a JSON key for the service account and download it. This is your
    `GOOGLE_APPLICATION_CREDENTIALS` file.
-5. **Share Google Drive**: create (or pick) a parent folder in Drive, share
-   it with the service account's email (found in the JSON key, e.g.
-   `xxx@yyy.iam.gserviceaccount.com`) with **Editor** access. Copy the
-   folder ID from its URL into `GOOGLE_DRIVE_FOLDER_ID`.
-6. **Share the Google Sheet**: create a new spreadsheet, share it with the
-   same service account email as **Editor**. Copy the spreadsheet ID from
-   its URL into `SPREADSHEET_ID`. The bot creates the `Expenses` and
+5. **Share the Google Sheet**: create a new spreadsheet, share it with the
+   service account's email (found in the JSON key, e.g.
+   `xxx@yyy.iam.gserviceaccount.com`) as **Editor**. Copy the spreadsheet ID
+   from its URL into `SPREADSHEET_ID`. The bot creates the `Expenses` and
    `Summary` worksheets automatically on first run.
-7. If Vision OCR isn't enabled/available, the bot automatically falls back
+6. If Vision OCR isn't enabled/available, the bot automatically falls back
    to Tesseract — no extra Google setup is required for that path, but you
    do need Tesseract installed on the host (see below).
+
+### 1b. OAuth Client ID (for Google Drive uploads)
+
+7. In the same Google Cloud project, go to **APIs & Services → OAuth
+   consent screen**. Choose **External**, fill in an app name/support
+   email, and add your own Google account as a **test user** (this keeps
+   the app in "Testing" mode, which is fine for personal use and needs no
+   Google review).
+8. Go to **APIs & Services → Credentials → Create Credentials → OAuth
+   client ID**. Application type: **Desktop app**. Give it any name.
+9. Click **Download JSON** on the client you just created. Save it as
+   `client_secret.json` in the bot's project directory (path configured by
+   `GOOGLE_OAUTH_CLIENT_SECRET_PATH`, default `./client_secret.json`).
+10. Decide which Google Drive should receive the uploaded slips — this is
+    the personal account you'll authorize in step 3 below. If you want a
+    specific parent folder rather than the account's Drive root, create it
+    and copy its folder ID from the URL into `GOOGLE_DRIVE_FOLDER_ID`.
 
 ## 2. Telegram Bot setup
 
@@ -101,34 +131,72 @@ pip install -r requirements.txt
 #   (poppler-utils provides pdftoppm, needed by pdf2image for PDF slips)
 
 cp .env.example .env
-# edit .env: BOT_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_DRIVE_FOLDER_ID,
-# SPREADSHEET_ID, ALLOWED_USER_IDS
+# edit .env: BOT_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, SPREADSHEET_ID,
+# GOOGLE_OAUTH_CLIENT_SECRET_PATH, GOOGLE_DRIVE_FOLDER_ID, ALLOWED_USER_IDS
+# place service_account.json and client_secret.json next to main.py
 
+python authorize_drive.py   # one-time Drive authorization - see below
 python main.py
 ```
 
-## 4. Running tests
+## 4. One-time Drive authorization (headless VPS friendly)
+
+Google Drive access can't be pre-baked into a JSON key file like the
+service account — a real person has to grant consent once. Since this bot
+typically runs on a VPS over SSH with no browser, `authorize_drive.py`
+uses a manual copy/paste flow instead of the usual "open a browser on this
+machine" pattern:
+
+```bash
+python authorize_drive.py
+```
+
+1. The script prints a Google sign-in URL.
+2. Copy that URL and open it in a browser on **any device** — your phone,
+   your laptop, it doesn't need to be the VPS.
+3. Sign in with the Google account you want the bot to upload slips to,
+   and click **Allow**.
+4. The browser will try to redirect to `http://localhost/...` and fail to
+   load (e.g. "This site can't be reached") — **that's expected**, since
+   nothing is running on your personal device. The authorization code is
+   in that URL regardless of whether the page loaded.
+5. Copy the full URL from the address bar (or just the `code=...` value)
+   and paste it back into the terminal prompt.
+6. The script saves a token to `token.json` (path configured by
+   `GOOGLE_OAUTH_TOKEN_PATH`). The bot reuses and auto-refreshes this token
+   on every subsequent start — you only need to repeat this if the token is
+   revoked or deleted.
+
+If the bot ever logs a `DriveAuthError` telling you to re-authorize, just
+run `python authorize_drive.py` again.
+
+## 5. Running tests
 
 ```bash
 pip install pytest
 pytest
 ```
 
-Tests cover amount/date parsing, Thai/English slip OCR parsing, and the
-duplicate-detection/search/stats logic against an in-memory fake sheet —
-no Google or Telegram credentials needed.
+Tests cover amount/date parsing, Thai/English slip OCR parsing, the OAuth
+code-extraction helper, and the duplicate-detection/search/stats logic
+against an in-memory fake sheet — no live Google or Telegram credentials
+needed.
 
-## 5. Deploy on Ubuntu 24.04 (systemd)
+## 6. Deploy on Ubuntu 24.04 (systemd)
 
 ```bash
 sudo useradd --system --home /opt/expense_bot --shell /usr/sbin/nologin expensebot
 sudo mkdir -p /opt/expense_bot /var/log/expense_bot
 sudo chown -R expensebot:expensebot /opt/expense_bot /var/log/expense_bot
 
-# Copy the project (including .env and your service-account JSON key) to
-# /opt/expense_bot, then as the expensebot user:
+# Copy the project (including .env, service_account.json, and
+# client_secret.json) to /opt/expense_bot, then as the expensebot user:
 sudo -u expensebot python3.12 -m venv /opt/expense_bot/venv
 sudo -u expensebot /opt/expense_bot/venv/bin/pip install -r /opt/expense_bot/requirements.txt
+
+# One-time interactive Drive authorization (do this BEFORE enabling the
+# systemd service, since it needs a human at the terminal):
+sudo -u expensebot /opt/expense_bot/venv/bin/python /opt/expense_bot/authorize_drive.py
 
 sudo cp /opt/expense_bot/deploy/expense-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -138,37 +206,43 @@ journalctl -u expense-bot -f
 ```
 
 The unit sets `Restart=always` so the bot auto-restarts on crash or reboot.
+`token.json` is created once by `authorize_drive.py` and reused/refreshed
+automatically by the running service afterwards.
 
-## 6. Backups
+## 7. Backups
 
 In addition to the daily automatic Google Sheet backup (a dated copy in
 Drive, configured via `DAILY_BACKUP_HOUR_UTC` / `GOOGLE_DRIVE_BACKUP_FOLDER_ID`),
 it's good practice to also periodically back up:
 
-- The `.env` file and service-account JSON key (store securely, never in git).
+- The `.env` file, `service_account.json`, `client_secret.json`, and
+  `token.json` (store securely, never in git — `token.json` alone grants
+  Drive access to whichever account authorized it).
 - `.drive_folder_cache.json` (safe to delete — it will be rebuilt from Drive
   on next use, just costs a few extra API calls).
 
 ## Conversation Flow
 
+All bot replies are in Thai (see [User-facing language](#user-facing-language) below).
+
 ```
 User sends slip photo/PDF
   -> bot uploads original to Drive, runs OCR
-  -> if amount unclear: bot asks user to type it
-  -> if duplicate found: bot asks "Save again? Yes/No"
-  -> bot shows extracted info + category buttons
-  -> bot asks "Add a remark?" (Skip / Type Remark)
-  -> bot saves to Google Sheets and replies "✅ Expense Recorded Successfully"
+  -> if amount unclear: "🤔 อ่านจำนวนเงินไม่ชัดเจนครับ กรุณาพิมพ์จำนวนเงินที่ถูกต้อง"
+  -> if duplicate found: "⚠️ สลิปนี้มีการบันทึกไว้แล้วครับ ต้องการบันทึกซ้ำอีกครั้งไหม?" (ใช่ / ไม่)
+  -> bot shows extracted info ("พบข้อมูลดังนี้ครับ...") + category buttons
+  -> bot asks "ต้องการเพิ่มหมายเหตุไหม?" (ข้าม / พิมพ์หมายเหตุ)
+  -> bot saves to Google Sheets and replies "✅ บันทึกรายการเรียบร้อยแล้ว"
 ```
 
 Cash expense (no slip) — skips OCR, Drive upload, and duplicate check:
 
 ```
-User types "150" (or "/cash 150 coffee") directly to the bot
+User types "150" (or "/cash 150 ค่ากาแฟ") directly to the bot
   -> bot shows category buttons
-  -> bot asks "Add a remark?" (Skip / Type Remark), unless a remark was
+  -> bot asks "ต้องการเพิ่มหมายเหตุไหม?" (ข้าม / พิมพ์หมายเหตุ), unless a remark was
      already given as part of "/cash <amount> <remark>"
-  -> bot saves to Google Sheets and replies "✅ Expense Recorded Successfully"
+  -> bot saves to Google Sheets and replies "✅ บันทึกรายการเรียบร้อยแล้ว"
 ```
 
 Instant expense summary — no command needed:
@@ -181,8 +255,22 @@ User types "สรุปค่าใช้จ่าย" / "ค่าใช้จ
 
 ## Categories
 
-Food, Accommodation, Transportation, Entertainment, Education, Donation,
-Shopping, Bills, Healthcare, Investment, Family, Business, Other.
+🍜 อาหาร (Food), 🏨 ที่พัก (Accommodation), 🚗 การเดินทาง (Transportation),
+🎮 ความบันเทิง (Entertainment), 📚 การศึกษา (Education), 🙏 บริจาค (Donation),
+🛍 ช้อปปิ้ง (Shopping), 💡 ค่าบิล (Bills), 🏥 สุขภาพ (Healthcare),
+📈 การลงทุน (Investment), 👨‍👩‍👧 ครอบครัว (Family), 💼 ธุรกิจ (Business), 📦 อื่นๆ (Other).
+
+## User-facing language
+
+Every message the bot sends to Telegram (prompts, buttons, confirmations,
+error messages, category labels, scheduled reports) is in Thai. Logging
+(`logger.info`/`logger.error`, for developer debugging) stays in English,
+as does all code — comments, variable/function names, and the CLI prompts
+in `authorize_drive.py` (an admin setup tool, not part of the bot's chat
+UI). The `/edit` flow's field names (`Amount`, `Category`, `Remark`,
+`Bank`, `Sender`, `Receiver`) are also kept in English since they must
+match the Google Sheet's column headers exactly for the edit to work; the
+surrounding prompts around them are in Thai.
 
 ## Notes on the Sheet schema
 

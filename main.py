@@ -20,6 +20,7 @@ from telegram.ext import (
     filters,
 )
 
+from auth import DriveAuthError
 from config import Config, load_config
 from conversation import SlipConversation
 from database import ExpenseDatabase
@@ -46,7 +47,7 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "⚠️ Something went wrong on my end. Please try again."
+                "⚠️ ขออภัยครับ เกิดข้อผิดพลาดบางอย่าง กรุณาลองใหม่อีกครั้ง"
             )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to notify user about error")
@@ -54,7 +55,7 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def build_application(config: Config) -> Application:
     drive = DriveManager(
-        credentials_path=config.google_application_credentials,
+        token_path=config.google_oauth_token_path,
         parent_folder_id=config.google_drive_folder_id,
         cache_path=config.folder_cache_path,
     )
@@ -191,11 +192,11 @@ async def _monthly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         totals = db.monthly_stats(prev_month_last_day.year, prev_month_last_day.month, user_id)
         if not totals:
             continue
-        lines = [f"📅 Monthly report - {prev_month_last_day.strftime('%B %Y')}"]
+        lines = [f"📅 รายงานประจำเดือน - {prev_month_last_day.strftime('%B %Y')}"]
         total = sum(totals.values())
         for category, amount in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
             lines.append(f"  {category}: {amount:.2f}")
-        lines.append(f"\nTotal: {total:.2f}")
+        lines.append(f"\nยอดรวม: {total:.2f}")
         try:
             await context.bot.send_message(chat_id=user_id, text="\n".join(lines))
         except Exception:  # noqa: BLE001
@@ -216,11 +217,11 @@ async def _yearly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         totals = db.yearly_stats(last_year, user_id)
         if not totals:
             continue
-        lines = [f"📆 Yearly report - {last_year}"]
+        lines = [f"📆 รายงานประจำปี - {last_year}"]
         total = sum(totals.values())
         for category, amount in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
             lines.append(f"  {category}: {amount:.2f}")
-        lines.append(f"\nTotal: {total:.2f}")
+        lines.append(f"\nยอดรวม: {total:.2f}")
         try:
             await context.bot.send_message(chat_id=user_id, text="\n".join(lines))
         except Exception:  # noqa: BLE001
@@ -231,7 +232,12 @@ def main() -> None:
     config = load_config()
     setup_logging(config.log_file, config.log_level)
     logger.info("Starting Expense Tracker Bot")
-    application = build_application(config)
+    try:
+        application = build_application(config)
+    except DriveAuthError as exc:
+        logger.error("Drive not authorized yet: %s", exc)
+        print(f"\n❌ {exc}\n")
+        raise SystemExit(1)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
