@@ -14,6 +14,10 @@ Send a photo (or PDF) of a bank transfer slip to a Telegram bot and have it:
 
 - Thai + English bank slip OCR, automatic bank detection (KBank, SCB, Bangkok
   Bank, Krungthai, Krungsri, TTB, GSB, PromptPay, and more).
+- Tesseract-focused accuracy pipeline for the no-Vision-billing case (the
+  common setup - see "OCR accuracy pipeline" below): adaptive-thresholded
+  preprocessing on every OCR call, plus a two-pass targeted crop around the
+  amount label specifically for slips with colored/graphic backgrounds.
 - Image and PDF slip support, with automatic image compression before upload.
 - Duplicate detection (by reference number, or amount+date+time) with a
   yes/no confirmation before saving a repeat.
@@ -71,6 +75,48 @@ paid Shared Drive:
 |---|---|---|
 | Google Sheets | Service account (`GOOGLE_APPLICATION_CREDENTIALS`) | Sheets are shared *to* the service account — no personal quota needed. |
 | Google Drive | OAuth2 user account (`client_secret.json` + `token.json`) | Uploaded files need to be owned by a real Google account with Drive storage. |
+
+## OCR accuracy pipeline
+
+Google Cloud Vision needs billing enabled on the GCP project; without it,
+`OCREngine` always falls back to Tesseract (`ocr.py`), so Tesseract's
+accuracy is what actually matters day to day - especially against real
+bank app slips with colored templates or decorative graphics (K PLUS /
+PromptPay-style slips are the common case) rather than plain scanned
+documents. Every Tesseract call goes through:
+
+1. **General preprocessing** (`_prepare_for_ocr`): upscale small images
+   (phone photos are often smaller than Tesseract wants), convert to
+   grayscale, boost contrast, and binarize with an *adaptive* (local, not
+   global) threshold - each pixel is compared against a blurred estimate
+   of its own neighborhood rather than one fixed brightness cutoff, so a
+   colored banner in one part of the slip and a photo/graphic in another
+   can each binarize sensibly instead of one blowing out the other.
+2. **Sparse-text page segmentation** (`--psm 11`): Tesseract's *default*
+   layout analysis (PSM 3) tries to group text into paragraphs/columns,
+   and a large graphic on the slip can confuse that badly enough that it
+   drops an entire text block - verified directly against a synthetic
+   slip where PSM 3 missed the "Amount" label and its value completely
+   while PSM 11 ("find scattered text, no structure assumed") found both.
+3. **Two-pass targeted amount extraction**: pass 1's word-level output
+   locates the "Amount"/"จำนวนเงิน" label; pass 2 crops a region around it
+   (direction - "right" or "below" the label - guided by the detected
+   bank's typical layout, see `_BANK_AMOUNT_DIRECTION_HINTS`), preprocesses
+   *that crop* more aggressively (bigger upscale, denoise, tighter
+   threshold), and re-runs Tesseract restricted to digits only. A small,
+   high-contrast, digit-only crop is a much easier problem for Tesseract
+   than the whole noisy slip. The crop result must match a proper
+   "X,XXX.XX" decimal format to be trusted - a crop that missed the real
+   value can otherwise OCR to a stray garbage digit, which would be a
+   false-positive "confident" amount worse than not guessing at all.
+4. **Unchanged safety net**: if the label can't be located, or neither
+   crop direction yields a valid decimal amount, everything falls through
+   to the existing full-text heuristics and, ultimately, to the manual
+   re-entry prompt - nothing here removes that fallback, it just needs to
+   trigger less often.
+
+None of this needs new dependencies - it's pure Pillow (`ImageOps`,
+`ImageFilter`, `ImageChops`) plus `pytesseract`, both already required.
 
 ## 1. Google Cloud setup
 
