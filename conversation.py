@@ -124,7 +124,7 @@ class SlipConversation:
             return ConversationHandler.END
 
         if not self.is_authorized(user.id):
-            await message.reply_text("You're not authorized to use this bot.")
+            await message.reply_text("คุณไม่มีสิทธิ์ใช้งานบอทนี้ครับ")
             return ConversationHandler.END
 
         try:
@@ -135,23 +135,23 @@ class SlipConversation:
         except Exception:  # noqa: BLE001
             logger.exception("Failed to download slip")
             await message.reply_text(
-                "⚠️ I couldn't download that file. Please try sending it again."
+                "⚠️ ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาลองส่งใหม่อีกครั้งนะครับ"
             )
             return ConversationHandler.END
 
         telegram_file_id = self._extract_file_id(message)
 
-        processing_msg = await message.reply_text("🔎 Reading your slip, one moment...")
+        processing_msg = await message.reply_text("🔎 กำลังอ่านสลิป รอสักครู่นะครับ...")
 
         try:
             ocr_result = await self._run_ocr(file_bytes, is_pdf)
         except Exception:  # noqa: BLE001
             logger.exception("OCR failed")
             await processing_msg.edit_text(
-                "⚠️ OCR failed for this slip. Please type the amount manually (e.g. 1250.00)."
+                "⚠️ อ่านสลิปนี้ไม่สำเร็จ กรุณาพิมพ์จำนวนเงินด้วยตนเอง (เช่น 1250.00)"
             )
             context.user_data[PENDING_KEY] = PendingExpense(
-                amount=None, bank="Unknown", slip_date=date_cls.today(), slip_time=time_cls(0, 0),
+                amount=None, bank="ไม่ทราบ", slip_date=date_cls.today(), slip_time=time_cls(0, 0),
                 sender="", receiver="", reference_number="",
                 drive_url="", telegram_file_id=telegram_file_id, ocr_confidence=0.0,
             )
@@ -165,7 +165,7 @@ class SlipConversation:
 
         pending = PendingExpense(
             amount=ocr_result.amount,
-            bank=ocr_result.bank or "Unknown",
+            bank=ocr_result.bank or "ไม่ทราบ",
             slip_date=ocr_result.slip_date or date_cls.today(),
             slip_time=ocr_result.slip_time or time_cls(0, 0),
             sender=ocr_result.sender or "",
@@ -179,7 +179,7 @@ class SlipConversation:
 
         if pending.amount is None or ocr_result.confidence < self._config.ocr_confidence_threshold:
             await processing_msg.edit_text(
-                "🤔 I couldn't read the amount clearly.\nPlease type the correct amount."
+                "🤔 อ่านจำนวนเงินไม่ชัดเจนครับ\nกรุณาพิมพ์จำนวนเงินที่ถูกต้อง"
             )
             return WAITING_AMOUNT_CORRECTION
 
@@ -204,9 +204,9 @@ class SlipConversation:
                 tg_file = await context.bot.get_file(doc.file_id)
                 raw = bytes(await tg_file.download_as_bytearray())
                 return compress_image(raw), doc.file_name or f"slip_{doc.file_unique_id}.jpg", "image/jpeg", False
-            raise ValueError("Please send the slip as an image or PDF file.")
+            raise ValueError("กรุณาส่งสลิปเป็นไฟล์รูปภาพหรือ PDF นะครับ")
 
-        raise ValueError("Please send a photo or PDF of your transfer slip.")
+        raise ValueError("กรุณาส่งรูปภาพหรือไฟล์ PDF ของสลิปโอนเงินครับ")
 
     @staticmethod
     def _extract_file_id(message) -> str:
@@ -243,12 +243,12 @@ class SlipConversation:
         pending: PendingExpense = context.user_data.get(PENDING_KEY)
         message = update.effective_message
         if pending is None:
-            await message.reply_text("Session expired, please resend the slip.")
+            await message.reply_text("เซสชันหมดอายุแล้วครับ กรุณาส่งสลิปใหม่อีกครั้ง")
             return ConversationHandler.END
 
         amount = parse_amount(message.text or "")
         if amount is None:
-            await message.reply_text("That doesn't look like a valid amount. Please try again, e.g. 1250.00")
+            await message.reply_text("จำนวนเงินไม่ถูกต้องครับ กรุณาลองใหม่ เช่น 1250.00")
             return WAITING_AMOUNT_CORRECTION
 
         pending.amount = amount
@@ -278,11 +278,11 @@ class SlipConversation:
         )
         if dup_row:
             keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Yes", callback_data=CB_DUP_YES),
-                  InlineKeyboardButton("No", callback_data=CB_DUP_NO)]]
+                [[InlineKeyboardButton("ใช่", callback_data=CB_DUP_YES),
+                  InlineKeyboardButton("ไม่", callback_data=CB_DUP_NO)]]
             )
             await message.reply_text(
-                "⚠️ This slip already exists.\nSave again?", reply_markup=keyboard
+                "⚠️ สลิปนี้มีการบันทึกไว้แล้วครับ\nต้องการบันทึกซ้ำอีกครั้งไหม?", reply_markup=keyboard
             )
             return WAITING_DUPLICATE_CONFIRM
 
@@ -290,12 +290,12 @@ class SlipConversation:
 
     async def _ask_category(self, message, pending: PendingExpense) -> int:
         summary = (
-            "I found the following information.\n\n"
-            f"Amount: {pending.amount if pending.amount is not None else 'Unknown'}\n"
-            f"Bank: {pending.bank}\n"
-            f"Date: {pending.slip_date.isoformat()}\n"
-            f"Time: {pending.slip_time.strftime('%H:%M')}\n\n"
-            "Please choose the expense category."
+            "พบข้อมูลดังนี้ครับ\n\n"
+            f"จำนวนเงิน: {pending.amount if pending.amount is not None else 'ไม่ทราบ'}\n"
+            f"ธนาคาร: {pending.bank}\n"
+            f"วันที่: {pending.slip_date.isoformat()}\n"
+            f"เวลา: {pending.slip_time.strftime('%H:%M')}\n\n"
+            "กรุณาเลือกหมวดหมู่ค่าใช้จ่าย"
         )
         await message.reply_text(summary, reply_markup=_category_keyboard())
         return WAITING_CATEGORY
@@ -307,12 +307,12 @@ class SlipConversation:
         await query.answer()
         pending: PendingExpense = context.user_data.get(PENDING_KEY)
         if pending is None:
-            await query.edit_message_text("Session expired, please resend the slip.")
+            await query.edit_message_text("เซสชันหมดอายุแล้วครับ กรุณาส่งสลิปใหม่อีกครั้ง")
             return ConversationHandler.END
 
         if query.data == CB_DUP_NO:
             context.user_data.pop(PENDING_KEY, None)
-            await query.edit_message_text("Okay, not saved.")
+            await query.edit_message_text("โอเคครับ ไม่บันทึกรายการนี้")
             return ConversationHandler.END
 
         return await self._ask_category(query.message, pending)
@@ -324,22 +324,22 @@ class SlipConversation:
         await query.answer()
         pending: PendingExpense = context.user_data.get(PENDING_KEY)
         if pending is None:
-            await query.edit_message_text("Session expired, please resend the slip.")
+            await query.edit_message_text("เซสชันหมดอายุแล้วครับ กรุณาส่งสลิปใหม่อีกครั้ง")
             return ConversationHandler.END
 
         category_key = query.data.removeprefix(CB_CATEGORY_PREFIX)
-        emoji, label = CATEGORIES.get(category_key, ("📦", "Other"))
+        emoji, label = CATEGORIES.get(category_key, ("📦", "อื่นๆ"))
         pending.category = label
 
         if pending.remark_prefilled:
             return await self._finalize(update, context, remark=pending.remark, message=query.message, edit=True)
 
         keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Skip", callback_data=CB_REMARK_SKIP),
-              InlineKeyboardButton("Type Remark", callback_data=CB_REMARK_TYPE)]]
+            [[InlineKeyboardButton("ข้าม", callback_data=CB_REMARK_SKIP),
+              InlineKeyboardButton("พิมพ์หมายเหตุ", callback_data=CB_REMARK_TYPE)]]
         )
         await query.edit_message_text(
-            f"Category set to {emoji} {label}.\n\nWould you like to add a remark?",
+            f"เลือกหมวดหมู่ {emoji} {label} แล้วครับ\n\nต้องการเพิ่มหมายเหตุไหม?",
             reply_markup=keyboard,
         )
         return WAITING_REMARK_CHOICE
@@ -353,7 +353,7 @@ class SlipConversation:
         if query.data == CB_REMARK_SKIP:
             return await self._finalize(update, context, remark="", message=query.message, edit=True)
 
-        await query.edit_message_text("Please type your remark:")
+        await query.edit_message_text("กรุณาพิมพ์หมายเหตุ:")
         return WAITING_REMARK_TEXT
 
     async def handle_remark_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -366,7 +366,7 @@ class SlipConversation:
         pending: PendingExpense = context.user_data.get(PENDING_KEY)
         user = update.effective_user
         if pending is None or pending.category is None:
-            text = "Session expired, please resend the slip."
+            text = "เซสชันหมดอายุแล้วครับ กรุณาส่งสลิปใหม่อีกครั้ง"
             await (message.edit_text(text) if edit else message.reply_text(text))
             return ConversationHandler.END
 
@@ -390,16 +390,16 @@ class SlipConversation:
             self._db.save(record)
         except Exception:  # noqa: BLE001
             logger.exception("Failed to save expense record")
-            text = "⚠️ I couldn't save this to Google Sheets. Please try again in a moment."
+            text = "⚠️ บันทึกลง Google Sheets ไม่สำเร็จ กรุณาลองใหม่อีกครั้งในอีกสักครู่"
             await (message.edit_text(text) if edit else message.reply_text(text))
             return ConversationHandler.END
 
         context.user_data.pop(PENDING_KEY, None)
         confirmation = (
-            "✅ Expense Recorded Successfully\n\n"
-            f"Amount: {record.amount:.2f}\n"
-            f"Category: {record.category}\n"
-            f"Date: {record.date.isoformat()}"
+            "✅ บันทึกรายการเรียบร้อยแล้ว\n\n"
+            f"จำนวนเงิน: {record.amount:.2f}\n"
+            f"หมวดหมู่: {record.category}\n"
+            f"วันที่: {record.date.isoformat()}"
         )
         if edit:
             await message.edit_text(confirmation)
@@ -411,7 +411,7 @@ class SlipConversation:
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data.pop(PENDING_KEY, None)
-        await update.effective_message.reply_text("Cancelled.")
+        await update.effective_message.reply_text("ยกเลิกแล้วครับ")
         return ConversationHandler.END
 
     # -- cash expense entry (no slip) -----------------------------------------
@@ -424,7 +424,7 @@ class SlipConversation:
         user = update.effective_user
         message = update.effective_message
         if not self.is_authorized(user.id):
-            await message.reply_text("You're not authorized to use this bot.")
+            await message.reply_text("คุณไม่มีสิทธิ์ใช้งานบอทนี้ครับ")
             return ConversationHandler.END
 
         if context.args:

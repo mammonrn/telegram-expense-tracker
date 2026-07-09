@@ -43,20 +43,22 @@ def _optional_int_list(name: str) -> list[int]:
 
 
 # Category key -> (emoji, display label). Order defines keyboard layout.
+# Keys stay in English (used internally, e.g. callback_data); labels are
+# what the user sees and what gets written into the Category column.
 CATEGORIES: dict[str, tuple[str, str]] = {
-    "food": ("🍜", "Food"),
-    "accommodation": ("🏨", "Accommodation"),
-    "transportation": ("🚗", "Transportation"),
-    "entertainment": ("🎮", "Entertainment"),
-    "education": ("📚", "Education"),
-    "donation": ("🙏", "Donation"),
-    "shopping": ("🛍", "Shopping"),
-    "bills": ("💡", "Bills"),
-    "healthcare": ("🏥", "Healthcare"),
-    "investment": ("📈", "Investment"),
-    "family": ("👨‍👩‍👧", "Family"),
-    "business": ("💼", "Business"),
-    "other": ("📦", "Other"),
+    "food": ("🍜", "อาหาร"),
+    "accommodation": ("🏨", "ที่พัก"),
+    "transportation": ("🚗", "การเดินทาง"),
+    "entertainment": ("🎮", "ความบันเทิง"),
+    "education": ("📚", "การศึกษา"),
+    "donation": ("🙏", "บริจาค"),
+    "shopping": ("🛍", "ช้อปปิ้ง"),
+    "bills": ("💡", "ค่าบิล"),
+    "healthcare": ("🏥", "สุขภาพ"),
+    "investment": ("📈", "การลงทุน"),
+    "family": ("👨‍👩‍👧", "ครอบครัว"),
+    "business": ("💼", "ธุรกิจ"),
+    "other": ("📦", "อื่นๆ"),
 }
 
 EXPENSES_SHEET_NAME = "Expenses"
@@ -86,6 +88,8 @@ class Config:
     google_application_credentials: str
     google_drive_folder_id: str
     spreadsheet_id: str
+    google_oauth_client_secret_path: str
+    google_oauth_token_path: str
     allowed_user_ids: list[int] = field(default_factory=list)
     timezone: str = "Asia/Bangkok"
     log_file: str = "expense_bot.log"
@@ -113,11 +117,23 @@ def load_config() -> Config:
     if not Path(creds_path).exists():
         raise ConfigError(f"GOOGLE_APPLICATION_CREDENTIALS file not found: {creds_path}")
 
+    oauth_client_secret_path = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_PATH", "client_secret.json")
+    if not Path(oauth_client_secret_path).exists():
+        raise ConfigError(
+            f"GOOGLE_OAUTH_CLIENT_SECRET_PATH file not found: {oauth_client_secret_path}. "
+            "Download an OAuth Client ID (Desktop app) JSON from Google Cloud Console - see README.md."
+        )
+
     return Config(
         bot_token=_require("BOT_TOKEN"),
         google_application_credentials=creds_path,
         google_drive_folder_id=_require("GOOGLE_DRIVE_FOLDER_ID"),
         spreadsheet_id=_require("SPREADSHEET_ID"),
+        google_oauth_client_secret_path=oauth_client_secret_path,
+        # Not validated here - it doesn't exist yet until authorize_drive.py
+        # is run for the first time; drive.py/auth.py raise a clear,
+        # actionable error at the point of use if it's still missing.
+        google_oauth_token_path=os.getenv("GOOGLE_OAUTH_TOKEN_PATH", "token.json"),
         allowed_user_ids=_optional_int_list("ALLOWED_USER_IDS"),
         timezone=os.getenv("TIMEZONE", "Asia/Bangkok"),
         log_file=os.getenv("LOG_FILE", "expense_bot.log"),
