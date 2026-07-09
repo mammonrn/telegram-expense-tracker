@@ -42,24 +42,63 @@ def _optional_int_list(name: str) -> list[int]:
     return ids
 
 
-# Category key -> (emoji, display label). Order defines keyboard layout.
-# Keys stay in English (used internally, e.g. callback_data); labels are
-# what the user sees and what gets written into the Category column.
+# Category key -> (emoji, canonical label). Order defines keyboard layout.
+# Keys and labels both stay in English: the label is the canonical value
+# written into the Category column and used for storage, search, and stats
+# aggregation (SUMIF formulas in the Summary sheet match on it directly).
+# It must never change once records exist, or old and new rows silently
+# stop aggregating together.
+#
+# Thai is display-only - see CATEGORY_LABELS_TH below. Telegram-facing code
+# must translate at render time via `category_display()`, never by storing
+# the translated string.
 CATEGORIES: dict[str, tuple[str, str]] = {
-    "food": ("🍜", "อาหาร"),
-    "accommodation": ("🏨", "ที่พัก"),
-    "transportation": ("🚗", "การเดินทาง"),
-    "entertainment": ("🎮", "ความบันเทิง"),
-    "education": ("📚", "การศึกษา"),
-    "donation": ("🙏", "บริจาค"),
-    "shopping": ("🛍", "ช้อปปิ้ง"),
-    "bills": ("💡", "ค่าบิล"),
-    "healthcare": ("🏥", "สุขภาพ"),
-    "investment": ("📈", "การลงทุน"),
-    "family": ("👨‍👩‍👧", "ครอบครัว"),
-    "business": ("💼", "ธุรกิจ"),
-    "other": ("📦", "อื่นๆ"),
+    "food": ("🍜", "Food"),
+    "accommodation": ("🏨", "Accommodation"),
+    "transportation": ("🚗", "Transportation"),
+    "entertainment": ("🎮", "Entertainment"),
+    "education": ("📚", "Education"),
+    "donation": ("🙏", "Donation"),
+    "shopping": ("🛍", "Shopping"),
+    "bills": ("💡", "Bills"),
+    "healthcare": ("🏥", "Healthcare"),
+    "investment": ("📈", "Investment"),
+    "family": ("👨‍👩‍👧", "Family"),
+    "business": ("💼", "Business"),
+    "other": ("📦", "Other"),
 }
+
+# English canonical category -> Thai display label. Used ONLY when
+# rendering text to the user (buttons, confirmations, /stats output); the
+# Sheet always stores the English key from CATEGORIES above.
+CATEGORY_LABELS_TH: dict[str, str] = {
+    "Food": "อาหาร",
+    "Accommodation": "ที่พัก",
+    "Transportation": "การเดินทาง",
+    "Entertainment": "ความบันเทิง",
+    "Education": "การศึกษา",
+    "Donation": "บริจาค",
+    "Shopping": "ช้อปปิ้ง",
+    "Bills": "ค่าบิล",
+    "Healthcare": "สุขภาพ",
+    "Investment": "การลงทุน",
+    "Family": "ครอบครัว",
+    "Business": "ธุรกิจ",
+    "Other": "อื่นๆ",
+}
+
+# Reverse lookup, e.g. for normalizing a Thai category typed into
+# /search_category back to the English canonical value before querying.
+CATEGORY_LABELS_EN: dict[str, str] = {th: en for en, th in CATEGORY_LABELS_TH.items()}
+
+
+def category_display(canonical_label: str) -> str:
+    """Thai label for a stored English category, for display only.
+
+    Falls back to the input unchanged if it's not a known category (e.g.
+    a custom value someone typed manually via /edit).
+    """
+    return CATEGORY_LABELS_TH.get(canonical_label, canonical_label)
 
 EXPENSES_SHEET_NAME = "Expenses"
 SUMMARY_SHEET_NAME = "Summary"

@@ -16,7 +16,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filters
 
-from config import CATEGORIES, Config
+from config import CATEGORIES, CATEGORY_LABELS_EN, Config, category_display
 from database import ExpenseDatabase
 
 logger = logging.getLogger("expense_bot.commands")
@@ -134,14 +134,21 @@ class CommandHandlers:
         if not await self._guard(update):
             return
         if not context.args:
-            valid = ", ".join(label for _, label in CATEGORIES.values())
+            valid = ", ".join(category_display(label) for _, label in CATEGORIES.values())
             await update.effective_message.reply_text(
                 f"วิธีใช้: /search_category <หมวดหมู่>\nหมวดหมู่ที่ใช้ได้: {valid}"
             )
             return
-        category = " ".join(context.args)
+        typed = " ".join(context.args)
+        # The user sees (and is likely to type) the Thai display name;
+        # normalize it back to the English canonical value the Sheet
+        # actually stores before querying. Falls through unchanged if
+        # already English or unrecognized.
+        category = CATEGORY_LABELS_EN.get(typed, typed)
         results = self._db.search_by_category(category, update.effective_user.id)
-        await update.effective_message.reply_text(_format_records(results, f"หมวดหมู่: {category}"))
+        await update.effective_message.reply_text(
+            _format_records(results, f"หมวดหมู่: {category_display(category)}")
+        )
 
     async def search_date(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard(update):
@@ -206,6 +213,10 @@ class CommandHandlers:
             except Exception:  # noqa: BLE001
                 await update.effective_message.reply_text("จำนวนเงินต้องเป็นตัวเลขครับ กรุณาลองใหม่")
                 return EDIT_WAIT_VALUE
+        if field_name == "Category":
+            # Normalize a Thai-typed category back to the English canonical
+            # value, same as /search_category - keeps the Sheet consistent.
+            value = CATEGORY_LABELS_EN.get(value, value)
         self._db.edit_field(row, {field_name: value})
         await update.effective_message.reply_text(f"✅ อัปเดต {field_name} เรียบร้อยแล้ว")
         context.user_data.pop("edit_row", None)
@@ -260,7 +271,7 @@ def _format_totals(period_label: str, totals: dict[str, Decimal]) -> str:
     lines = [f"📊 สรุปค่าใช้จ่าย - {period_label}", ""]
     for category, amount in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
         pct = (amount / grand_total * 100) if grand_total else Decimal("0")
-        lines.append(f"  • {category}: {amount:,.2f} บาท ({pct:.1f}%)")
+        lines.append(f"  • {category_display(category)}: {amount:,.2f} บาท ({pct:.1f}%)")
     lines.append("")
     lines.append(f"รวมทั้งหมด: {grand_total:,.2f} บาท")
     return "\n".join(lines)
@@ -273,7 +284,7 @@ def _format_records(records: list[dict[str, str]], label: str, limit: int = 20) 
     for r in records[:limit]:
         lines.append(
             f"  {r.get('Date')} {r.get('Time')} - {r.get('Amount')} "
-            f"({r.get('Category')}) เลขอ้างอิง:{r.get('Reference Number') or '-'}"
+            f"({category_display(r.get('Category', ''))}) เลขอ้างอิง:{r.get('Reference Number') or '-'}"
         )
     if len(records) > limit:
         lines.append(f"  ...และอีก {len(records) - limit} รายการ")

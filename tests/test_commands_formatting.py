@@ -14,6 +14,17 @@ def test_format_totals_includes_percentage_breakdown():
     assert "400.00" in text  # grand total
 
 
+def test_format_totals_shows_thai_display_name_not_stored_english_value():
+    # totals keys are always the English canonical value read back from
+    # the Sheet's Category column - the Telegram-facing text must show
+    # the Thai translation, not that raw stored value.
+    totals = {"Food": Decimal("100.00")}
+    text = _format_totals("July 2026", totals)
+
+    assert "อาหาร" in text
+    assert "Food" not in text
+
+
 def test_format_totals_empty():
     assert "ไม่มีรายการค่าใช้จ่าย" in _format_totals("July 2026", {})
 

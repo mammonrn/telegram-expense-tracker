@@ -21,7 +21,7 @@ from telegram.ext import (
 )
 
 from auth import DriveAuthError
-from config import Config, load_config
+from config import Config, category_display, load_config
 from conversation import SlipConversation
 from database import ExpenseDatabase
 from drive import DriveManager
@@ -195,7 +195,7 @@ async def _monthly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         lines = [f"📅 รายงานประจำเดือน - {prev_month_last_day.strftime('%B %Y')}"]
         total = sum(totals.values())
         for category, amount in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
-            lines.append(f"  {category}: {amount:.2f}")
+            lines.append(f"  {category_display(category)}: {amount:.2f}")
         lines.append(f"\nยอดรวม: {total:.2f}")
         try:
             await context.bot.send_message(chat_id=user_id, text="\n".join(lines))
@@ -220,7 +220,7 @@ async def _yearly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         lines = [f"📆 รายงานประจำปี - {last_year}"]
         total = sum(totals.values())
         for category, amount in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
-            lines.append(f"  {category}: {amount:.2f}")
+            lines.append(f"  {category_display(category)}: {amount:.2f}")
         lines.append(f"\nยอดรวม: {total:.2f}")
         try:
             await context.bot.send_message(chat_id=user_id, text="\n".join(lines))

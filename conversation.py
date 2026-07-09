@@ -41,7 +41,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import CATEGORIES, Config
+from config import CATEGORIES, Config, category_display
 from database import ExpenseDatabase, ExpenseRecord
 from drive import DriveManager
 from ocr import OCREngine, OCRResult, parse_slip_text
@@ -328,8 +328,8 @@ class SlipConversation:
             return ConversationHandler.END
 
         category_key = query.data.removeprefix(CB_CATEGORY_PREFIX)
-        emoji, label = CATEGORIES.get(category_key, ("📦", "อื่นๆ"))
-        pending.category = label
+        emoji, label = CATEGORIES.get(category_key, ("📦", "Other"))
+        pending.category = label  # canonical English value - this is what gets saved
 
         if pending.remark_prefilled:
             return await self._finalize(update, context, remark=pending.remark, message=query.message, edit=True)
@@ -339,7 +339,7 @@ class SlipConversation:
               InlineKeyboardButton("พิมพ์หมายเหตุ", callback_data=CB_REMARK_TYPE)]]
         )
         await query.edit_message_text(
-            f"เลือกหมวดหมู่ {emoji} {label} แล้วครับ\n\nต้องการเพิ่มหมายเหตุไหม?",
+            f"เลือกหมวดหมู่ {emoji} {category_display(label)} แล้วครับ\n\nต้องการเพิ่มหมายเหตุไหม?",
             reply_markup=keyboard,
         )
         return WAITING_REMARK_CHOICE
@@ -398,7 +398,7 @@ class SlipConversation:
         confirmation = (
             "✅ บันทึกรายการเรียบร้อยแล้ว\n\n"
             f"จำนวนเงิน: {record.amount:.2f}\n"
-            f"หมวดหมู่: {record.category}\n"
+            f"หมวดหมู่: {category_display(record.category)}\n"
             f"วันที่: {record.date.isoformat()}"
         )
         if edit:
@@ -528,7 +528,7 @@ class SlipConversation:
 
 def _category_keyboard() -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(f"{emoji} {label}", callback_data=f"{CB_CATEGORY_PREFIX}{key}")
+        InlineKeyboardButton(f"{emoji} {category_display(label)}", callback_data=f"{CB_CATEGORY_PREFIX}{key}")
         for key, (emoji, label) in CATEGORIES.items()
     ]
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]

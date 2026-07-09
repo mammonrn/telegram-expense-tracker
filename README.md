@@ -45,6 +45,7 @@ config.py          # env-based configuration, categories, sheet schema
 utils.py           # logging, retry decorator, image/date/amount helpers
 auth.py            # Drive OAuth2 token loading/refreshing (see authorize_drive.py)
 authorize_drive.py # one-time interactive Drive authorization script (run manually)
+migrate_thai_categories.py  # one-time fix for rows saved with a Thai Category value
 ocr.py             # Vision/Tesseract OCR + Thai/English slip parsing
 drive.py           # Drive folder management, caching, uploads, backups (OAuth2)
 sheet.py           # Google Sheets Expenses + Summary worksheet management (service account)
@@ -255,22 +256,66 @@ User types "สรุปค่าใช้จ่าย" / "ค่าใช้จ
 
 ## Categories
 
-🍜 อาหาร (Food), 🏨 ที่พัก (Accommodation), 🚗 การเดินทาง (Transportation),
-🎮 ความบันเทิง (Entertainment), 📚 การศึกษา (Education), 🙏 บริจาค (Donation),
-🛍 ช้อปปิ้ง (Shopping), 💡 ค่าบิล (Bills), 🏥 สุขภาพ (Healthcare),
-📈 การลงทุน (Investment), 👨‍👩‍👧 ครอบครัว (Family), 💼 ธุรกิจ (Business), 📦 อื่นๆ (Other).
+🍜 Food, 🏨 Accommodation, 🚗 Transportation, 🎮 Entertainment,
+📚 Education, 🙏 Donation, 🛍 Shopping, 💡 Bills, 🏥 Healthcare,
+📈 Investment, 👨‍👩‍👧 Family, 💼 Business, 📦 Other.
+
+These English names are the **canonical values** (`config.py`'s
+`CATEGORIES`) - they're what actually gets written into the Sheet's
+Category column, and what search/stats aggregation match against. They
+must never change once records exist, or old and new rows silently stop
+aggregating together (see "Migrating Thai category values" below for
+what happens when this rule is broken).
+
+For display, each category has a Thai translation in
+`config.py`'s `CATEGORY_LABELS_TH` (🍜 อาหาร, 🏨 ที่พัก, 🚗 การเดินทาง,
+🎮 ความบันเทิง, 📚 การศึกษา, 🙏 บริจาค, 🛍 ช้อปปิ้ง, 💡 ค่าบิล, 🏥 สุขภาพ,
+📈 การลงทุน, 👨‍👩‍👧 ครอบครัว, 💼 ธุรกิจ, 📦 อื่นๆ) rendered via
+`category_display()` at the point a message is sent - never stored.
 
 ## User-facing language
 
 Every message the bot sends to Telegram (prompts, buttons, confirmations,
-error messages, category labels, scheduled reports) is in Thai. Logging
-(`logger.info`/`logger.error`, for developer debugging) stays in English,
-as does all code — comments, variable/function names, and the CLI prompts
-in `authorize_drive.py` (an admin setup tool, not part of the bot's chat
-UI). The `/edit` flow's field names (`Amount`, `Category`, `Remark`,
-`Bank`, `Sender`, `Receiver`) are also kept in English since they must
-match the Google Sheet's column headers exactly for the edit to work; the
-surrounding prompts around them are in Thai.
+error messages, category labels, scheduled reports) is in Thai, via
+display-time translation (`category_display()` for categories; plain
+Thai strings everywhere else). **The data written to the Google Sheet is
+always the English canonical value** - Category, like every other
+column, is storage-first: display language must never leak into what
+gets saved, searched, or aggregated.
+
+Logging (`logger.info`/`logger.error`, for developer debugging) stays in
+English, as does all code — comments, variable/function names, and the
+CLI prompts in `authorize_drive.py` / `migrate_thai_categories.py`
+(admin setup/maintenance tools, not part of the bot's chat UI). The
+`/edit` flow's field names (`Amount`, `Category`, `Remark`, `Bank`,
+`Sender`, `Receiver`) are also kept in English since they must match the
+Google Sheet's column headers exactly for the edit to work; the
+surrounding prompts around them are in Thai. Typing a Thai category name
+into `/search_category` or `/edit`'s Category field is normalized back
+to the English canonical value automatically (`CATEGORY_LABELS_EN`)
+before it's used to query or save anything.
+
+## Migrating Thai category values (one-time fix)
+
+An earlier version of the Thai translation briefly stored the *Thai
+display label* directly in the Category column instead of the English
+canonical value (e.g. a row saved as "อาหาร" instead of "Food"). Rows
+saved during that window silently stopped aggregating with older/newer
+rows in the same category, since `/stats_month`, `/stats_year`, and the
+Summary sheet's `SUMIF` formulas all match on the exact stored string.
+
+If your Sheet has any rows from that window, run this once to fix them:
+
+```bash
+python migrate_thai_categories.py --dry-run   # preview: lists affected rows, changes nothing
+python migrate_thai_categories.py              # applies the fix
+```
+
+It scans every row, finds any Category value matching a known Thai
+label, and rewrites it to the matching English canonical value (e.g.
+"อาหาร" -> "Food"). Rows already in English, or containing an
+unrecognized/custom category, are left untouched. Safe to run more than
+once - a second run will report nothing left to migrate.
 
 ## Notes on the Sheet schema
 

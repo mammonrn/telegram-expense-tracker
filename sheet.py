@@ -16,7 +16,7 @@ from typing import Optional
 import gspread
 from google.oauth2 import service_account
 
-from config import CATEGORIES, EXPENSES_SHEET_NAME, SHEET_HEADERS, SUMMARY_SHEET_NAME
+from config import CATEGORIES, EXPENSES_SHEET_NAME, SHEET_HEADERS, SUMMARY_SHEET_NAME, category_display
 from utils import sync_retry
 
 logger = logging.getLogger("expense_bot.sheet")
@@ -115,8 +115,11 @@ class SheetManager:
         ]
         start_category_row = len(rows) + 1
         for key, (emoji, label) in CATEGORIES.items():
+            # The displayed row label is Thai for readability, but the
+            # SUMIF criteria must stay the English canonical `label` -
+            # that's the literal value stored in the Category column.
             rows.append(
-                [f"{emoji} {label}", f"=SUMIF({cat_range},\"{label}\",{data_range})"]
+                [f"{emoji} {category_display(label)}", f"=SUMIF({cat_range},\"{label}\",{data_range})"]
             )
 
         rows.append(["", ""])
